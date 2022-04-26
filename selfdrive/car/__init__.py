@@ -45,13 +45,16 @@ def dbc_dict(pt_dbc, radar_dbc, chassis_dbc=None, body_dbc=None):
   return {'pt': pt_dbc, 'radar': radar_dbc, 'chassis': chassis_dbc, 'body': body_dbc}
 
 
-def apply_std_steer_torque_limits(apply_torque, apply_torque_last, driver_torque, LIMITS):
-
+def apply_std_steer_torque_limits(apply_torque, apply_torque_last, driver_torque, LIMITS, ss=False):
   # limits due to driver torque
   driver_max_torque = LIMITS.STEER_MAX + (LIMITS.STEER_DRIVER_ALLOWANCE + driver_torque * LIMITS.STEER_DRIVER_FACTOR) * LIMITS.STEER_DRIVER_MULTIPLIER
   driver_min_torque = -LIMITS.STEER_MAX + (-LIMITS.STEER_DRIVER_ALLOWANCE + driver_torque * LIMITS.STEER_DRIVER_FACTOR) * LIMITS.STEER_DRIVER_MULTIPLIER
   max_steer_allowed = max(min(LIMITS.STEER_MAX, driver_max_torque), 0)
   min_steer_allowed = min(max(-LIMITS.STEER_MAX, driver_min_torque), 0)
+  if ss:
+    min_torque = min(abs(max_steer_allowed), abs(min_steer_allowed))
+    max_steer_allowed = min_torque
+    min_steer_allowed = -min_torque
   apply_torque = clip(apply_torque, min_steer_allowed, max_steer_allowed)
 
   # slow rate if steer torque increases in magnitude
@@ -61,7 +64,6 @@ def apply_std_steer_torque_limits(apply_torque, apply_torque_last, driver_torque
   else:
     apply_torque = clip(apply_torque, apply_torque_last - LIMITS.STEER_DELTA_UP,
                         min(apply_torque_last + LIMITS.STEER_DELTA_DOWN, LIMITS.STEER_DELTA_UP))
-
   return int(round(float(apply_torque)))
 
 

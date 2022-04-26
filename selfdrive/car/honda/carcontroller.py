@@ -4,9 +4,9 @@ from common.realtime import DT_CTRL
 from selfdrive.controls.lib.drive_helpers import rate_limit
 from common.numpy_fast import clip, interp
 from selfdrive.config import Conversions as CV
-from selfdrive.car import create_gas_interceptor_command
+from selfdrive.car import create_gas_interceptor_command, apply_std_steer_torque_limits
 from selfdrive.car.honda import hondacan
-from selfdrive.car.honda.values import CruiseButtons, VISUAL_HUD, HONDA_BOSCH, HONDA_NIDEC_ALT_PCM_ACCEL, CarControllerParams, CAR
+from selfdrive.car.honda.values import CruiseButtons, VISUAL_HUD, HONDA_BOSCH, HONDA_NIDEC_ALT_PCM_ACCEL, CarControllerParams, CAR, SERIAL_STEERING, LKAS_LIMITS
 from opendbc.can.packer import CANPacker
 from common.params import Params
 import cereal.messaging as messaging
@@ -108,6 +108,7 @@ class CarController():
     self.signal_last = 0.
     self.apply_brake_last = 0
     self.last_pump_ts = 0.
+    self.apply_steer_last = 0
     self.packer = CANPacker(dbc_name)
 
     self.accel = 0
@@ -196,9 +197,17 @@ class CarController():
     # **** process the car messages ****
 
     # steer torque is converted back to CAN reference (positive when steering right)
-    apply_steer = int(interp(-actuators.steer * P.STEER_MAX, P.STEER_LOOKUP_BP, P.STEER_LOOKUP_V))
+    apply_steer = int(interp(actuators.steer * self.params.STEER_MAX,
+                             self.params.STEER_LOOKUP_BP, self.params.STEER_LOOKUP_V))
 
-    # Send CAN commands.
+    if (CS.CP.carFingerprint in SERIAL_STEERING):
+      apply_steer = apply_std_steer_torque_limits(apply_steer, self.apply_steer_last, CS.out.steeringTorque, LKAS_LIMITS, ss=True)
+      self.apply_steer_last = apply_steer
+
+    # steer torque is converted back to CAN reference (positive when steering right)
+    apply_steer = -apply_steer
+
+    # Send CAN commands
     can_sends = []
 
     # tester present - w/ no response (keeps radar disabled)
